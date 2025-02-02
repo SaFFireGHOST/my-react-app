@@ -185,8 +185,11 @@ const styles = {
     color: '#333',
   },
   imageContainer: {
-    width: '400px',
-    height: '400px',
+    width: '25vw',
+    height: '40vh',
+    maxWidth: '500px',
+    minWidth: '220px',
+
     margin: '0 auto 20px',
     position: 'relative',
   },
