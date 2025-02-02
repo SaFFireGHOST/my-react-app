@@ -75,6 +75,9 @@ const App = () => {
               ref={webcamRef}
               screenshotFormat="image/jpeg"
               style={styles.webcam}
+              videoConstraints={{
+                facingMode: "environment" 
+              }}
             />
             <div style={styles.gridOverlay}>
               {[...Array(9)].map((_, index) => (
