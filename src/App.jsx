@@ -1,23 +1,26 @@
 import React, { useState, useRef } from 'react';
 import Webcam from 'react-webcam';
 import { Camera } from 'lucide-react';
-import {ClipLoader,RotateLoader,GridLoader} from "react-spinners";
-import { Circle, Heart ,Roller,Grid} from 'react-spinners-css';
+import { Roller } from 'react-spinners-css';
 
 const API_URL = 'https://backend-app-t0ym.onrender.com/predict';
-import "./App.css"
+
+import "./App.css";
+
 const App = () => {
   const [image, setImage] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
   const fileInputRef = useRef(null);
   const webcamRef = useRef(null);
 
   const handleUpload = (event) => {
-    setImage(false)
-    setPrediction(false)
+    setImage(null);
+    setPrediction(null);
+    setErrorMessage(null);
     const file = event.target.files[0];
     if (file) {
       setImage(URL.createObjectURL(file));
@@ -27,8 +30,9 @@ const App = () => {
   };
 
   const capturePhoto = () => {
-    setImage(false)
-    setPrediction(false)
+    setImage(null);
+    setPrediction(null);
+    setErrorMessage(null);
     const imageSrc = webcamRef.current.getScreenshot();
     setImage(imageSrc);
     setIsCameraOn(false);
@@ -42,23 +46,38 @@ const App = () => {
     if (!imageFile) return;
     setLoading(true);
     setPrediction(null);
+    setErrorMessage(null);
 
     try {
       const formData = new FormData();
       formData.append('image', imageFile);
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+        setLoading(false);
+        setErrorMessage("Server is busy, please try again later.");
+      }, 60000); // 60 seconds timeout
+
       const response = await fetch(API_URL, {
         method: 'POST',
         body: formData,
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) throw new Error();
 
       const result = await response.json();
       setPrediction(result);
     } catch (error) {
-      console.error('Error uploading image:', error);
-      setPrediction({ error: 'Failed to get prediction' });
+      if (error.name === 'AbortError') {
+        setErrorMessage("Server is busy, please try again later.");
+      } else {
+        console.error('Error uploading image:', error);
+        setErrorMessage("Failed to get prediction.");
+      }
     } finally {
       setLoading(false);
     }
@@ -75,9 +94,7 @@ const App = () => {
               ref={webcamRef}
               screenshotFormat="image/jpeg"
               style={styles.webcam}
-              videoConstraints={{
-                facingMode: "environment" 
-              }}
+              videoConstraints={{ facingMode: "environment" }}
             />
             <div style={styles.gridOverlay}>
               {[...Array(9)].map((_, index) => (
@@ -93,58 +110,29 @@ const App = () => {
       </div>
 
       <div style={styles.buttonContainer}>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleUpload}
-          ref={fileInputRef}
-          style={{ display: 'none' }}
-        />
-        <button
-          style={styles.button}
-          onClick={() => fileInputRef.current.click()}
-        >
-          Upload Image
-        </button>
-        <button
-          style={styles.button}
-          onClick={() => isCameraOn ? capturePhoto() : setIsCameraOn(true)}
-        >
-          {isCameraOn ? 'Capture Photo' : (
-            <div style={styles.buttonContent}>
-              <Camera size={20} />
-              <span style={{ marginLeft: '8px' }}>Use Camera</span>
-            </div>
-          )}
+        <input type="file" accept="image/*" onChange={handleUpload} ref={fileInputRef} style={{ display: 'none' }} />
+        <button style={styles.button} onClick={() => fileInputRef.current.click()}>Upload Image</button>
+        <button style={styles.button} onClick={() => isCameraOn ? capturePhoto() : setIsCameraOn(true)}>
+          {isCameraOn ? 'Capture Photo' : <><Camera size={20} /><span style={{ marginLeft: '8px' }}>Use Camera</span></>}
         </button>
       </div>
 
       {image && (
-        <button
-          style={styles.predictButton}
-          onClick={getPrediction}
-        >
-          Get Prediction
-        </button>
+        <button style={styles.predictButton} onClick={getPrediction}>Get Prediction</button>
       )}
 
       {loading && (
         <div style={styles.spinnerContainer}>
-          {/* <div style={styles.spinner}></div> */}
-         
-          <Roller color="#a571de"
-            loading={loading}
-            size={40} />
-
-            {/* <Grid color="#a571de"
-            loading={loading}
-
-            size={80} /> */}
-
+          <Roller color="#a571de" loading={loading} size={40} />
           <p>Processing image...</p>
         </div>
       )}
 
+      {errorMessage && (
+        <div style={styles.errorContainer}>
+          <p>{errorMessage}</p>
+        </div>
+      )}
 
       {prediction && (
         <div style={{
@@ -152,9 +140,7 @@ const App = () => {
           backgroundColor: prediction.prediction === 'Lesion' ? '#ffebee' : '#e8f5e9',
         }}>
           <h2 style={styles.resultHeading}>Prediction Result</h2>
-          <p style={{
-            color: prediction.prediction === 'Lesion' ? '#c62828' : '#2e7d32'
-          }}>
+          <p style={{ color: prediction.prediction === 'Lesion' ? '#c62828' : '#2e7d32' }}>
             Prediction: {prediction.prediction}
           </p>
           <p>Confidence: {prediction.confidence}</p>
@@ -189,7 +175,6 @@ const styles = {
     height: '40vh',
     maxWidth: '500px',
     minWidth: '220px',
-
     margin: '0 auto 20px',
     position: 'relative',
   },
@@ -250,11 +235,6 @@ const styles = {
     cursor: 'pointer',
     fontSize: '16px',
   },
-  buttonContent: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   predictButton: {
     backgroundColor: '#9C27B0',
     color: 'white',
@@ -274,6 +254,11 @@ const styles = {
     fontSize: '20px',
     marginBottom: '10px',
     color: '#333',
+  },
+  errorContainer: {
+    color: 'red',
+    marginTop: '10px',
+    fontWeight: 'bold',
   },
 };
 
